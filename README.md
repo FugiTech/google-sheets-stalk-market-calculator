@@ -25,3 +25,5 @@ series of prices and removes the ones that don't match the data you've entered. 
 
 # Copy the spreadsheet:
 https://docs.google.com/spreadsheets/d/1TF66LVbU9THe0p64KMfeg3tvywpEIC_-9VfjeCAvA7E/copy
+
+Spreadsheet originally by https://twitter.com/SmallLady0
