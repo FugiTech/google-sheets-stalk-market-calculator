@@ -32,14 +32,23 @@
 // We ensure the sheet has [calc] in the name to allow you to store other data in the spreadsheet
 function onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
   const sheetName = edit.range.getSheet().getName()
-  if (sheetName.includes('[calc]')) {
-    updateSheet(edit.range)
+  if (sheetName.includes('[calc]') && edit.range.getRow() > 1 && edit.range.getColumn() > 1 && edit.range.getColumn() < 16) {
+    if (edit.range.getColumn() % 2 === 0) {
+      toggleChart(edit.range)
+    } else {
+      updateSheet(edit.range)
+    }
   }
 }
 // The simple trigger of onEdit didn't seem to be working, so I manually made another trigger to wrap it for my sheet
 // If you're having issues, this might be the fix
 function _onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
   onEdit(edit)
+}
+
+// Chooses which data range to power the chart based on what box is checked
+function toggleChart(range: GoogleAppsScript.Spreadsheet.Range) {
+  // TODO
 }
 
 // Does the data extraction and formatting of results
@@ -50,16 +59,17 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
   // of how AM/PM prices are entered
   const sheet = range.getSheet()
   const row = range.getRow() - (range.getRow() % 2) // Round down to nearest multiple of 2
+  const islandName = sheet.getRange(row, 1).getValue()
 
   // Get manually entered buy/sell prices
-  const sellRange = sheet.getRange(row, 4, 2, 6)
+  const sellRange = sheet.getRange(row, 4, 2, 12)
   let buyPrice: number | null = Number(sheet.getRange(row, 2).getValue())
   buyPrice = buyPrice < 90 || buyPrice > 110 ? null : buyPrice // Sanitize buyPrice
   const sellPrices = [buyPrice || 90, buyPrice || 110]
   const sellValues = sellRange.getValues()
-  for (let col = 0; col < 6; col++) {
+  for (let col = 1; col < 12; col += 2) {
     for (let row = 0; row < 2; row++) {
-      sellPrices.push(Number(sellValues[row][col] || 'NaN'))
+      sellPrices.push(Number(sellValues[row][col] || 'NaN') || NaN)
     }
   }
 
@@ -75,17 +85,22 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
   }
 
   // For each cell set the value based on prediction
-  let results: string[] = []
   sellPrices.slice(2).forEach((v, idx) => {
-    const cell = sellRange.getCell(1 + (idx % 2), 1 + Math.floor(idx / 2))
+    const cell = sellRange.getCell(1 + (idx % 2), 2 + 2 * Math.floor(idx / 2))
     const estimates = prediction[idx + 2]
+    const chartCol = 30 + 12 * (row / 2 - 1) + idx
+
+    const day = sheet.getRange(1, 4 + idx).getValue()
+    const time = sheet.getRange(row + (idx % 2), 3).getValue()
+    const chartTitle = `${islandName} ${day} ${time}`
+
     if (!isNaN(v)) {
-      results.push(`${v}`)
       cell.setFontColor('#000')
       cell.setFontStyle('normal')
+      fillEstimates(sheet, chartCol, [{ price: v, probability: 1 }], chartTitle)
     } else if (!estimates) {
-      results.push('')
       cell.setValue('')
+      fillEstimates(sheet, chartCol, [], chartTitle)
     } else {
       const min = Math.min(...estimates.map(e => e.price))
       const max = Math.max(...estimates.map(e => e.price))
@@ -93,15 +108,24 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
       const probable = estimates.reduce((a, b) => a + b.price * b.probability, 0).toFixed(0)
 
       const value = isFinite(min) && isFinite(max) ? `${min}-${probable}-${max}` : ''
-      results.push(value)
       cell.setValue(value)
       cell.setFontColor('#999')
       cell.setFontStyle('italic')
+      fillEstimates(sheet, chartCol, estimates, chartTitle)
     }
   })
 
-  // Handy for debugging why the script isn't working
-  console.log({ sellPrices, results })
+  // Set the titles for the chart data
+  sheet.getRange(2, 29, 661).setValues(Array(661).map((_, i) => [i]))
+}
+
+function fillEstimates(sheet: GoogleAppsScript.Spreadsheet.Sheet, col: number, estimates: Estimate[], title: string) {
+  const values = Array(661).fill(0)
+  for (const e of estimates) {
+    values[e.price] = e.probability * 100
+  }
+  values.unshift(title)
+  sheet.getRange(1, col, 662).setValues(values.map(v => [v]))
 }
 
 type Prediction = Estimate[][] // outer array is time periods, inner array is prices for that time period
@@ -111,7 +135,7 @@ interface Estimate {
 }
 
 function generatePatternZero(given_prices: number[]): Prediction {
-  let prediction: Prediction = []
+  let predictions: Prediction[] = []
   const probability1 = 0.346 // Acquired by GetPatternProbabilities
 
   for (let dec_phase_1_len = 2; dec_phase_1_len < 4; dec_phase_1_len++) {
@@ -124,8 +148,7 @@ function generatePatternZero(given_prices: number[]): Prediction {
       for (let high_phase_3_len = 0; high_phase_3_len < 7 - high_phase_1_len; high_phase_3_len++) {
         const probability4 = probability3 / (7 - high_phase_1_len)
 
-        prediction = mergePredictions([
-          prediction,
+        predictions.push(
           generatePatternZeroWithLengths(
             given_prices,
             high_phase_1_len,
@@ -137,26 +160,26 @@ function generatePatternZero(given_prices: number[]): Prediction {
             dec_rates_2,
             probability4,
           ),
-        ])
+        )
       }
     }
   }
 
-  return prediction
+  return mergePredictions(predictions)
 }
 
 function generatePatternOne(given_prices: number[]): Prediction {
-  let prediction: Prediction = []
+  let predictions: Prediction[] = []
   const probability1 = 0.248
 
   for (let peak_start = 3; peak_start < 10; peak_start++) {
     const probability2 = probability1 / 7
     const rates = generateRates(0.85, 0.9, 0.03, 0.05, peak_start - 2)
 
-    prediction = mergePredictions([prediction, generatePatternOneWithPeak(given_prices, peak_start, rates, probability2)])
+    predictions.push(generatePatternOneWithPeak(given_prices, peak_start, rates, probability2))
   }
 
-  return prediction
+  return mergePredictions(predictions)
 }
 
 function generatePatternTwo(given_prices: number[]): Prediction {
@@ -170,7 +193,7 @@ function generatePatternTwo(given_prices: number[]): Prediction {
 }
 
 function generatePatternThree(given_prices: number[]): Prediction {
-  let prediction: Prediction = []
+  let predictions: Prediction[] = []
   const probability1 = 0.2585
 
   for (let peak_start = 2; peak_start < 10; peak_start++) {
@@ -181,11 +204,11 @@ function generatePatternThree(given_prices: number[]): Prediction {
     for (let spikeRate = 1.4; spikeRate <= 2.001; spikeRate += 0.05) {
       const probability3 = probability2 / 13
 
-      prediction = mergePredictions([prediction, generatePatternThreeWithPeak(given_prices, peak_start, spikeRate, dec_rates_1, dec_rates_2, probability3)])
+      predictions.push(generatePatternThreeWithPeak(given_prices, peak_start, spikeRate, dec_rates_1, dec_rates_2, probability3))
     }
   }
 
-  return prediction
+  return mergePredictions(predictions)
 }
 
 function generatePatternZeroWithLengths(
@@ -442,62 +465,70 @@ function priceRange(min: number, max: number, probability: number): Estimate[] {
 function generateRates(startMin: number, startMax: number, incrMin: number, incrMax: number, length: number): Prediction {
   if (length <= 0) return []
 
-  let rates: number[][] = []
-  for (let startingRate = startMin; startingRate <= startMax; startingRate += 0.01) {
-    rates.push([startingRate])
+  const rateInterval = 0.01
+  const initialProbability = 1.0 / (Math.round((startMax - startMin) / rateInterval) + 1)
+  const changeProbability = 1.0 / (Math.round((incrMax - incrMin) / rateInterval) + 1)
+
+  let rates: Prediction = Array(length)
+    .fill(undefined)
+    .map(() => [])
+  for (let startingRate = startMin; startingRate <= startMax; startingRate += rateInterval) {
+    rates[0].push({ price: startingRate, probability: initialProbability })
   }
 
   for (let i = 0; i < length - 1; i++) {
-    let newRates: number[][] = []
-    for (let rateChange = incrMin; rateChange <= incrMax; rateChange += 0.01) {
-      for (let r of rates) {
-        const empty: number[] = []
-        newRates.push(empty.concat(r, [r[r.length - 1] - rateChange]))
+    let period = new Map<number, Estimate>();
+    for (let priorRate of rates[i]) {
+      for (let rateChange = incrMin; rateChange <= incrMax; rateChange += rateInterval) {
+        const price = priorRate.price - rateChange
+        let e = period.get(price)
+        if(!e) {
+          e = { price, probability: 0}
+          period.set(price, e)
+        }
+        e.probability += priorRate.probability * changeProbability
       }
     }
-    rates = newRates
+    rates[i+1] = Array.from(period.values())
   }
 
-  // Convert rates into predictions
-  let predictions: Prediction[] = []
-  for (let r of rates) {
-    predictions.push(r.map(rate => [{ price: rate, probability: 1.0 / rates.length }]))
-  }
-
-  return mergePredictions(predictions)
+  return rates
 }
 
 function mergePredictions(predictions: Prediction[]): Prediction {
-  const ret: Prediction = []
+  const ret = []
 
   for (let prediction of predictions) {
     for (let timePeriod = 0; timePeriod < prediction.length; timePeriod++) {
-      if (!ret[timePeriod]) ret[timePeriod] = []
+      if (!ret[timePeriod]) ret[timePeriod] = new Map<number,Estimate>()
       for (let price of prediction[timePeriod]) {
-        let retPrice = ret[timePeriod].find(p => p.price === price.price)
+        let retPrice = ret[timePeriod].get(price.price)
         if (!retPrice) {
           retPrice = { price: price.price, probability: 0 }
-          ret[timePeriod].push(retPrice)
+          ret[timePeriod].set(price.price, retPrice)
         }
         retPrice.probability += price.probability
       }
     }
   }
 
-  return ret
+  return ret.map(m => Array.from(m.values()))
 }
 
 function multiplyEstimates(a: Estimate[], b: Estimate[]): Estimate[] {
-  const ret: Estimate[] = []
+  const ret = new Map<number,Estimate>()
   for (const aa of a) {
     for (const bb of b) {
-      ret.push({
-        price: Math.ceil(aa.price * bb.price),
-        probability: aa.probability * bb.probability,
-      })
+      const price = Math.ceil(aa.price * bb.price)
+      let e = ret.get(price)
+      if(!e) {
+        e = { price, probability: 0}
+        ret.set(price, e)
+      }
+      e.probability += aa.probability * bb.probability
     }
   }
-  return ret
+  return Array.from(ret.values())
 }
 
 function TestUpdateSheet(buyPrice: number, sellPrices: number[]) {
@@ -522,6 +553,7 @@ function TestUpdateSheet(buyPrice: number, sellPrices: number[]) {
                 setFontStyle() {},
               }
             },
+            setValues() {},
           }
         },
       }
@@ -543,7 +575,7 @@ function GetPatternProbabilities() {
 
   return results
 
-  function getNextPattern(pattern) {
+  function getNextPattern(pattern: number) {
     const r = Math.random()
     switch (pattern) {
       case 0:
