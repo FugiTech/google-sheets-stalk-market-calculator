@@ -68,7 +68,7 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
 
   // Normalize prediction probabilities
   for (let estimates of prediction) {
-    let mul = 1.0 / estimates.map((p) => p.probability).reduce((a, b) => a + b, 0)
+    let mul = 1.0 / estimates.map(p => p.probability).reduce((a, b) => a + b, 0)
     for (let e of estimates) {
       e.probability *= mul
     }
@@ -78,14 +78,17 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
   let results: string[] = []
   sellPrices.slice(2).forEach((v, idx) => {
     const cell = sellRange.getCell(1 + (idx % 2), 1 + Math.floor(idx / 2))
+    const estimates = prediction[idx + 2]
     if (!isNaN(v)) {
+      results.push(`${v}`)
       cell.setFontColor('#000')
       cell.setFontStyle('normal')
-      results.push(`${v}`)
+    } else if (!estimates) {
+      results.push('')
+      cell.setValue('')
     } else {
-      const estimates = prediction[idx + 2]
-      const min = Math.min(...estimates.map((e) => e.price))
-      const max = Math.max(...estimates.map((e) => e.price))
+      const min = Math.min(...estimates.map(e => e.price))
+      const max = Math.max(...estimates.map(e => e.price))
       // This one is a bit weird and I am likely getting the math wrong
       const probable = estimates.reduce((a, b) => a + b.price * b.probability, 0).toFixed(0)
 
@@ -218,8 +221,8 @@ function generatePatternZeroWithLengths(
   // Dec Phase 1
   for (let i = 2 + high_phase_1_len, j = 0; i < 2 + high_phase_1_len + dec_phase_1_len; i++, j++) {
     let estimates = multiplyEstimates(dec_phase_1_rates[j], priceRange(given_prices[0], given_prices[1], probability))
-    const min_pred = Math.min(...estimates.map((e) => e.price))
-    const max_pred = Math.max(...estimates.map((e) => e.price))
+    const min_pred = Math.min(...estimates.map(e => e.price))
+    const max_pred = Math.max(...estimates.map(e => e.price))
 
     if (!isNaN(given_prices[i])) {
       if (given_prices[i] < min_pred || given_prices[i] > max_pred) {
@@ -251,8 +254,8 @@ function generatePatternZeroWithLengths(
   // Dec Phase 2
   for (let i = 2 + high_phase_1_len + dec_phase_1_len + high_phase_2_len, j = 0; i < 2 + high_phase_1_len + dec_phase_1_len + high_phase_2_len + dec_phase_2_len; i++, j++) {
     let estimates = multiplyEstimates(dec_phase_2_rates[j], priceRange(given_prices[0], given_prices[1], probability))
-    const min_pred = Math.min(...estimates.map((e) => e.price))
-    const max_pred = Math.max(...estimates.map((e) => e.price))
+    const min_pred = Math.min(...estimates.map(e => e.price))
+    const max_pred = Math.max(...estimates.map(e => e.price))
 
     if (!isNaN(given_prices[i])) {
       if (given_prices[i] < min_pred || given_prices[i] > max_pred) {
@@ -291,8 +294,8 @@ function generatePatternOneWithPeak(given_prices: number[], peak_start: number, 
 
   for (let i = 2; i < peak_start; i++) {
     let estimates = multiplyEstimates(rates[i - 2], priceRange(given_prices[0], given_prices[1], probability))
-    const min_pred = Math.min(...estimates.map((e) => e.price))
-    const max_pred = Math.max(...estimates.map((e) => e.price))
+    const min_pred = Math.min(...estimates.map(e => e.price))
+    const max_pred = Math.max(...estimates.map(e => e.price))
 
     if (!isNaN(given_prices[i])) {
       if (given_prices[i] < min_pred || given_prices[i] > max_pred) {
@@ -331,8 +334,8 @@ function generatePatternTwoWithRates(given_prices: number[], rates: Prediction, 
 
   for (let i = 2; i < 14; i++) {
     let estimates = multiplyEstimates(rates[i - 2], priceRange(given_prices[0], given_prices[1], probability))
-    const min_pred = Math.min(...estimates.map((e) => e.price))
-    const max_pred = Math.max(...estimates.map((e) => e.price))
+    const min_pred = Math.min(...estimates.map(e => e.price))
+    const max_pred = Math.max(...estimates.map(e => e.price))
 
     if (!isNaN(given_prices[i])) {
       if (given_prices[i] < min_pred || given_prices[i] > max_pred) {
@@ -360,8 +363,8 @@ function generatePatternThreeWithPeak(
 
   for (let i = 2; i < peak_start; i++) {
     let estimates = multiplyEstimates(dec_rates_1[i - 2], priceRange(given_prices[0], given_prices[1], probability))
-    const min_pred = Math.min(...estimates.map((e) => e.price))
-    const max_pred = Math.max(...estimates.map((e) => e.price))
+    const min_pred = Math.min(...estimates.map(e => e.price))
+    const max_pred = Math.max(...estimates.map(e => e.price))
 
     if (!isNaN(given_prices[i])) {
       if (given_prices[i] < min_pred || given_prices[i] > max_pred) {
@@ -407,8 +410,8 @@ function generatePatternThreeWithPeak(
 
   for (let i = peak_start + 5, j = 0; i < 14; i++, j++) {
     let estimates = multiplyEstimates(dec_rates_2[j], priceRange(given_prices[0], given_prices[1], probability))
-    const min_pred = Math.min(...estimates.map((e) => e.price))
-    const max_pred = Math.max(...estimates.map((e) => e.price))
+    const min_pred = Math.min(...estimates.map(e => e.price))
+    const max_pred = Math.max(...estimates.map(e => e.price))
 
     if (!isNaN(given_prices[i])) {
       if (given_prices[i] < min_pred || given_prices[i] > max_pred) {
@@ -458,7 +461,7 @@ function generateRates(startMin: number, startMax: number, incrMin: number, incr
   // Convert rates into predictions
   let predictions: Prediction[] = []
   for (let r of rates) {
-    predictions.push(r.map((rate) => [{ price: rate, probability: 1.0 / rates.length }]))
+    predictions.push(r.map(rate => [{ price: rate, probability: 1.0 / rates.length }]))
   }
 
   return mergePredictions(predictions)
@@ -471,7 +474,7 @@ function mergePredictions(predictions: Prediction[]): Prediction {
     for (let timePeriod = 0; timePeriod < prediction.length; timePeriod++) {
       if (!ret[timePeriod]) ret[timePeriod] = []
       for (let price of prediction[timePeriod]) {
-        let retPrice = ret[timePeriod].find((p) => p.price === price.price)
+        let retPrice = ret[timePeriod].find(p => p.price === price.price)
         if (!retPrice) {
           retPrice = { price: price.price, probability: 0 }
           ret[timePeriod].push(retPrice)
