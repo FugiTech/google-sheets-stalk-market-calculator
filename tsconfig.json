@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "esnext",
+    ],
+    "strict": true,
+    "noEmit": true,
+    "downlevelIteration": true,
+    "types": [
+      "@types/google-apps-script"
+    ]
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
