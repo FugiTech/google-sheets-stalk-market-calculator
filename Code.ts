@@ -34,7 +34,7 @@ function onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
   const sheetName = edit.range.getSheet().getName()
   if (sheetName.includes('[calc]') && edit.range.getRow() > 1 && edit.range.getColumn() > 1 && edit.range.getColumn() < 16) {
     if (edit.range.getColumn() % 2 === 0) {
-      toggleChart(edit.range)
+      toggleChart(edit.range, edit.value)
     } else {
       updateSheet(edit.range)
     }
@@ -47,8 +47,53 @@ function _onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
 }
 
 // Chooses which data range to power the chart based on what box is checked
-function toggleChart(range: GoogleAppsScript.Spreadsheet.Range) {
-  // TODO
+function toggleChart(range: GoogleAppsScript.Spreadsheet.Range, value: string) {
+  const sheet = range.getSheet()
+  const charts = sheet.getCharts()
+  // If the box was unchecked, remove the chart and exit
+  if (value.toLowerCase() !== 'true') {
+    for (let chart of charts) {
+      sheet.removeChart(chart)
+    }
+    return
+  }
+  // Otherwise uncheck any other checkboxes
+  const selfRow = range.getRow() - 2
+  const selfCol = range.getColumn() - 4
+  const checkboxSearchRange = sheet.getRange(2, 4, 1000, 12)
+  const checkboxSearchValues = checkboxSearchRange.getValues()
+  for (let row = 0; row < checkboxSearchValues.length; row++) {
+    for (let col = 0; col < checkboxSearchValues[row].length; col += 2) {
+      if ((row !== selfRow || col !== selfCol) && checkboxSearchValues[row][col].toLowerCase() === 'true') {
+        checkboxSearchRange.getCell(row, col).setValue(false)
+      }
+    }
+  }
+
+  // Create a chart if needed
+  let chart = charts.length ? charts[0] : sheet.newChart().setPosition(2, 17, 0, 0).build()
+
+  // Find the data
+  const dataCol = getDataColumn(range.getRow(), range.getColumn())
+  const title = sheet.getRange(1, dataCol).getValue()
+  const labelsRange = sheet.getRange(2, 29, 661)
+  const dataRange = sheet.getRange(2, dataCol, 661)
+  const integralRange = sheet.getRange(663, dataCol, 661)
+
+  // Update the chart
+  chart = chart
+    .modify()
+    .clearRanges()
+    .addRange(labelsRange)
+    .addRange(dataRange)
+    .addRange(integralRange)
+    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
+    .asComboChart()
+    .setTitle(title)
+    .build()
+
+  // Update the sheet with the new chart
+  charts.length ? sheet.updateChart(chart) : sheet.insertChart(chart)
 }
 
 // Does the data extraction and formatting of results
@@ -58,12 +103,11 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
   // You'll also need to update the part below if you change the structure
   // of how AM/PM prices are entered
   const sheet = range.getSheet()
-  const row = range.getRow() - (range.getRow() % 2) // Round down to nearest multiple of 2
-  const islandName = sheet.getRange(row, 1).getValue()
+  const editRow = range.getRow() - (range.getRow() % 2) // Round down to nearest multiple of 2
 
   // Get manually entered buy/sell prices
-  const sellRange = sheet.getRange(row, 4, 2, 12)
-  let buyPrice: number | null = Number(sheet.getRange(row, 2).getValue())
+  const sellRange = sheet.getRange(editRow, 4, 2, 12)
+  let buyPrice: number | null = Number(sheet.getRange(editRow, 2).getValue())
   buyPrice = buyPrice < 90 || buyPrice > 110 ? null : buyPrice // Sanitize buyPrice
   const sellPrices = [buyPrice || 90, buyPrice || 110]
   const sellValues = sellRange.getValues()
@@ -85,22 +129,44 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
   }
 
   // For each cell set the value based on prediction
-  sellPrices.slice(2).forEach((v, idx) => {
-    const cell = sellRange.getCell(1 + (idx % 2), 2 + 2 * Math.floor(idx / 2))
-    const estimates = prediction[idx + 2]
-    const chartCol = 30 + 12 * (row / 2 - 1) + idx
+  // We store this in an array and set it all at once for performance
+  const islandName = sheet.getRange(editRow, 1).getValue()
+  const days = sheet
+    .getRange(1, 4, 1, 12)
+    .getValues()[0]
+    .filter(v => v)
+  const times = sheet
+    .getRange(editRow, 3, 2, 1)
+    .getValues()
+    .map(v => v[0])
+  const displayValues: GoogleAppsScript.Spreadsheet.RichTextValue[][] = [Array(12).fill(null), Array(12).fill(null)]
+  const dataValues: string[][] = [] // array of columns, we convert to rows later
+  const normalStyle = SpreadsheetApp.newTextStyle().setItalic(false).setForegroundColor('#000').build()
+  const predictionStyle = SpreadsheetApp.newTextStyle().setItalic(true).setForegroundColor('#999').build()
 
-    const day = sheet.getRange(1, 4 + idx).getValue()
-    const time = sheet.getRange(row + (idx % 2), 3).getValue()
+  // Copy the checkbox values
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 12; col += 2) {
+      displayValues[row][col] = SpreadsheetApp.newRichTextValue().setText(sellValues[row][col]).build()
+    }
+  }
+
+  // Set the display values for each cell, and construct the data column
+  sellPrices.slice(2).forEach((v, idx) => {
+    const estimates = prediction[idx + 2]
+
+    const day = days[Math.floor(idx / 2)]
+    const time = times[idx % 2]
     const chartTitle = `${islandName} ${day} ${time}`
 
+    const richText = SpreadsheetApp.newRichTextValue()
+
     if (!isNaN(v)) {
-      cell.setFontColor('#000')
-      cell.setFontStyle('normal')
-      fillEstimates(sheet, chartCol, [{ price: v, probability: 1 }], chartTitle)
+      richText.setText(`${v}`).setTextStyle(normalStyle)
+      dataValues.push(fillEstimates(chartTitle, [{ price: v, probability: 1 }]))
     } else if (!estimates) {
-      cell.setValue('')
-      fillEstimates(sheet, chartCol, [], chartTitle)
+      richText.setText('').setTextStyle(normalStyle)
+      dataValues.push(fillEstimates(chartTitle, []))
     } else {
       const min = Math.min(...estimates.map(e => e.price))
       const max = Math.max(...estimates.map(e => e.price))
@@ -108,24 +174,52 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
       const probable = estimates.reduce((a, b) => a + b.price * b.probability, 0).toFixed(0)
 
       const value = isFinite(min) && isFinite(max) ? `${min}-${probable}-${max}` : ''
-      cell.setValue(value)
-      cell.setFontColor('#999')
-      cell.setFontStyle('italic')
-      fillEstimates(sheet, chartCol, estimates, chartTitle)
+      richText.setText(value).setTextStyle(predictionStyle)
+      dataValues.push(fillEstimates(chartTitle, estimates))
     }
+
+    displayValues[idx % 2][1 + 2 * Math.floor(idx / 2)] = richText.build()
   })
 
-  // Set the titles for the chart data
-  sheet.getRange(2, 29, 661).setValues(Array(661).map((_, i) => [i]))
+  // Fill the display data
+  sellRange.setRichTextValues(displayValues)
+  // Set the titles for the chart data, in case it's not already there
+  sheet.getRange(2, 29, 661).setValues(
+    Array(661)
+      .fill(undefined)
+      .map((_, i) => [i]),
+  )
+  // Fill the chart data
+  sheet.getRange(1, getDataColumn(editRow, 0), 1323, 12).setValues(
+    Array(1323)
+      .fill(undefined)
+      .map((_, i) => dataValues.map(v => v[i])),
+  )
 }
 
-function fillEstimates(sheet: GoogleAppsScript.Spreadsheet.Sheet, col: number, estimates: Estimate[], title: string) {
-  const values = Array(661).fill(0)
+// row & col are absolute. col is clamped to valid values.
+function getDataColumn(row: number, col: number) {
+  let ret = 30 + 12 * (Math.floor(row / 2) - 1) // Find the start of this island's data
+  ret += Math.max(Math.min(2 * Math.floor((col - 4) / 2), 0), 11)
+  ret += row % 2 // Add 1 for afternoon
+  return ret
+}
+
+function fillEstimates(title: string, estimates: Estimate[]): string[] {
+  let values: string[] = Array(661).fill(0)
   for (const e of estimates) {
-    values[e.price] = e.probability * 100
+    values[e.price] = `${e.probability * 100}`
   }
+  let lastValue = 0
+  values = values.concat(
+    values.reduce((arr, v) => {
+      arr.push(`${lastValue + Number(v)}`)
+      lastValue = Number(v)
+      return arr
+    }, Array<string>()),
+  )
   values.unshift(title)
-  sheet.getRange(1, col, 662).setValues(values.map(v => [v]))
+  return values
 }
 
 type Prediction = Estimate[][] // outer array is time periods, inner array is prices for that time period
@@ -477,19 +571,19 @@ function generateRates(startMin: number, startMax: number, incrMin: number, incr
   }
 
   for (let i = 0; i < length - 1; i++) {
-    let period = new Map<number, Estimate>();
+    let period = new Map<number, Estimate>()
     for (let priorRate of rates[i]) {
       for (let rateChange = incrMin; rateChange <= incrMax; rateChange += rateInterval) {
         const price = priorRate.price - rateChange
         let e = period.get(price)
-        if(!e) {
-          e = { price, probability: 0}
+        if (!e) {
+          e = { price, probability: 0 }
           period.set(price, e)
         }
         e.probability += priorRate.probability * changeProbability
       }
     }
-    rates[i+1] = Array.from(period.values())
+    rates[i + 1] = Array.from(period.values())
   }
 
   return rates
@@ -500,7 +594,7 @@ function mergePredictions(predictions: Prediction[]): Prediction {
 
   for (let prediction of predictions) {
     for (let timePeriod = 0; timePeriod < prediction.length; timePeriod++) {
-      if (!ret[timePeriod]) ret[timePeriod] = new Map<number,Estimate>()
+      if (!ret[timePeriod]) ret[timePeriod] = new Map<number, Estimate>()
       for (let price of prediction[timePeriod]) {
         let retPrice = ret[timePeriod].get(price.price)
         if (!retPrice) {
@@ -516,13 +610,13 @@ function mergePredictions(predictions: Prediction[]): Prediction {
 }
 
 function multiplyEstimates(a: Estimate[], b: Estimate[]): Estimate[] {
-  const ret = new Map<number,Estimate>()
+  const ret = new Map<number, Estimate>()
   for (const aa of a) {
     for (const bb of b) {
       const price = Math.ceil(aa.price * bb.price)
       let e = ret.get(price)
-      if(!e) {
-        e = { price, probability: 0}
+      if (!e) {
+        e = { price, probability: 0 }
         ret.set(price, e)
       }
       e.probability += aa.probability * bb.probability
