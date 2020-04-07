@@ -2,7 +2,7 @@
  * A Google App Script to manage Animal Crossing New Horizon's Stalk Market predictions
  *
  * @name google-sheets-stalk-market-calculator
- * @version 2.0.0
+ * @version 2.1.0
  *
  * Original Reverse Engineering done by Treeki
  * https://gist.github.com/Treeki/85be14d297c80c8b3c0a76375743325b
@@ -64,14 +64,14 @@ function toggleChart(range: GoogleAppsScript.Spreadsheet.Range, value: string) {
   const checkboxSearchValues = checkboxSearchRange.getValues()
   for (let row = 0; row < checkboxSearchValues.length; row++) {
     for (let col = 0; col < checkboxSearchValues[row].length; col += 2) {
-      if ((row !== selfRow || col !== selfCol) && checkboxSearchValues[row][col].toLowerCase() === 'true') {
-        checkboxSearchRange.getCell(row, col).setValue(false)
+      if ((row !== selfRow || col !== selfCol) && checkboxSearchValues[row][col] === true) {
+        checkboxSearchRange.getCell(row + 1, col + 1).setValue(false)
       }
     }
   }
 
   // Create a chart if needed
-  let chart = charts.length ? charts[0] : sheet.newChart().setPosition(2, 17, 0, 0).build()
+  let chart = charts.length ? charts[0] : sheet.newChart().setPosition(2, 17, 0, 0).setOption('width', 800).setOption('height', 600).build()
 
   // Find the data
   const dataCol = getDataColumn(range.getRow(), range.getColumn())
@@ -83,13 +83,38 @@ function toggleChart(range: GoogleAppsScript.Spreadsheet.Range, value: string) {
   // Update the chart
   chart = chart
     .modify()
+    .asComboChart()
+    .setTitle(title)
+    .setXAxisTitle('Turnip Price in Bells')
+    .setColors(['#b6d7a8', '#a4c2f4'])
     .clearRanges()
     .addRange(labelsRange)
     .addRange(dataRange)
     .addRange(integralRange)
-    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
-    .asComboChart()
-    .setTitle(title)
+    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+    .setOption('useFirstColumnAsDomain', true)
+    .setOption('focusTarget', 'category')
+    .setOption('titleTextStyle', { alignment: 'center' })
+    .setOption('legend.position', 'none')
+    .setOption('series', {
+      0: {
+        type: 'area',
+        lineWidth: 1,
+      },
+      1: {
+        type: 'line',
+        targetAxisIndex: 1,
+      },
+    })
+    .setOption('vAxes', {
+      0: {
+        title: 'Individual Probability Percentage',
+      },
+      1: {
+        title: 'Cumulative Probability Percentage',
+        maxValue: 1,
+      },
+    })
     .build()
 
   // Update the sheet with the new chart
@@ -188,19 +213,19 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
     Array(661)
       .fill(undefined)
       .map((_, i) => [i]),
-  )
+  ).setNumberFormat("#,###")
   // Fill the chart data
   sheet.getRange(1, getDataColumn(editRow, 0), 1323, 12).setValues(
     Array(1323)
       .fill(undefined)
       .map((_, i) => dataValues.map(v => v[i])),
-  )
+  ).setNumberFormat("#,##0.00%")
 }
 
 // row & col are absolute. col is clamped to valid values.
 function getDataColumn(row: number, col: number) {
   let ret = 30 + 12 * (Math.floor(row / 2) - 1) // Find the start of this island's data
-  ret += Math.max(Math.min(2 * Math.floor((col - 4) / 2), 0), 11)
+  ret += Math.min(Math.max(2 * Math.floor((col - 4) / 2), 0), 11)
   ret += row % 2 // Add 1 for afternoon
   return ret
 }
@@ -208,15 +233,17 @@ function getDataColumn(row: number, col: number) {
 function fillEstimates(title: string, estimates: Estimate[]): string[] {
   let values: string[] = Array(661).fill(0)
   for (const e of estimates) {
-    values[e.price] = `${e.probability * 100}`
+    values[e.price] = `${e.probability}`
   }
-  let lastValue = 0
+  let value = 0
   values = values.concat(
-    values.reduce((arr, v) => {
-      arr.push(`${lastValue + Number(v)}`)
-      lastValue = Number(v)
-      return arr
-    }, Array<string>()),
+    values
+      .reduceRight((arr, v) => {
+        value += Number(v)
+        arr.push(`${value}`)
+        return arr
+      }, Array<string>())
+      .reverse(),
   )
   values.unshift(title)
   return values
