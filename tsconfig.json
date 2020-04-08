@@ -4,12 +4,13 @@
       "esnext",
     ],
     "strict": true,
-    "noEmit": true,
-    "downlevelIteration": true,
     "types": [
       "@types/google-apps-script"
     ]
   },
+  "include": [
+    "./*"
+  ],
   "exclude": [
     "node_modules"
   ]
