@@ -1,4 +1,4 @@
-const { readFileSync, writeFileSync } = require('fs')
+const { readFileSync, writeFileSync } = require('fs');
 const ts2gas = require('ts2gas');
 
 let source = readFileSync('Code.ts').toString();
