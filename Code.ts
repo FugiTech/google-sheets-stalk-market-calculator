@@ -32,7 +32,8 @@
 function onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
   const sheetName = edit.range.getSheet().getName()
   if (sheetName.includes('[calc]') && edit.range.getRow() > 1 && edit.range.getColumn() > 1 && edit.range.getColumn() < 16) {
-    if (edit.range.getColumn() % 2 === 0) {
+    const col = edit.range.getColumn()
+    if (col >= 4 && col <= 14 && col % 2 === 0) {
       toggleChart(edit.range, edit.value)
     } else {
       updateSheet(edit.range)
