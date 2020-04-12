@@ -30,9 +30,10 @@
 // Triggers whenever ANY cell is modified.
 // We ensure the sheet has [calc] in the name to allow you to store other data in the spreadsheet
 function onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
+  const checkboxCols = [3, 5, 7, 9, 11, 13];
   const sheetName = edit.range.getSheet().getName()
   if (sheetName.includes('[calc]') && edit.range.getRow() > 1 && edit.range.getColumn() > 1 && edit.range.getColumn() < 16) {
-    if (edit.range.getColumn() % 2 === 0) {
+    if (checkboxCols.includes(edit.range.getColumn())) {
       toggleChart(edit.range, edit.value)
     } else {
       updateSheet(edit.range)
