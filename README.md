@@ -32,5 +32,7 @@ Spreadsheet originally by https://twitter.com/SmallLady0
 
 # Changelog:
 v2.2.1: Fix bug where changing the Sunday Offer price wouldn't re-calculate predictions
+
 v2.2.0: Fix small spike calculator, add trend probability output
+
 v2.1.0: Fixed up some formatting, made predictions run _much_ faster, added detailed graphs of the probabilities behind each prediction
