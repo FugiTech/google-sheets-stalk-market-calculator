@@ -1,7 +1,7 @@
 /**
  * A Google App Script to manage Animal Crossing New Horizon's Stalk Market predictions
  *
- * @version 2.2.0
+ * @version 2.2.1
  *
  * Original Reverse Engineering done by Treeki
  * https://gist.github.com/Treeki/85be14d297c80c8b3c0a76375743325b
@@ -32,17 +32,12 @@
 function onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
   const sheetName = edit.range.getSheet().getName()
   if (sheetName.includes('[calc]') && edit.range.getRow() > 1 && edit.range.getColumn() > 1 && edit.range.getColumn() < 16) {
-    if (edit.range.getColumn() % 2 === 0) {
+    if (edit.range.getColumn() % 2 === 0 && edit.range.getColumn() > 2) {
       toggleChart(edit.range, edit.value)
     } else {
       updateSheet(edit.range)
     }
   }
-}
-// The simple trigger of onEdit didn't seem to be working, so I manually made another trigger to wrap it for my sheet
-// If you're having issues, this might be the fix
-function _onEdit(edit: GoogleAppsScript.Events.SheetsOnEdit) {
-  onEdit(edit)
 }
 
 // Chooses which data range to power the chart based on what box is checked
