@@ -1,0 +1,16 @@
+{
+  "name": "google-sheets-stalk-market-calculator",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fugiman/google-sheets-stalk-market-calculator.git"
+  },
+  "devDependencies": {
+    "@types/google-apps-script": "^1.0.11",
+    "ts2gas": "^3.6.1",
+    "typescript": "^3.8.3"
+  },
+  "scripts": {
+    "build": "node script/build.js"
+  }
+}
