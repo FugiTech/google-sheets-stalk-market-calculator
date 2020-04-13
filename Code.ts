@@ -1,7 +1,7 @@
 /**
  * A Google App Script to manage Animal Crossing New Horizon's Stalk Market predictions
  *
- * @version 2.2.1
+ * @version 2.2.2
  *
  * Original Reverse Engineering done by Treeki
  * https://gist.github.com/Treeki/85be14d297c80c8b3c0a76375743325b
@@ -134,6 +134,13 @@ function updateSheet(range: GoogleAppsScript.Spreadsheet.Range) {
     for (let row = 0; row < 2; row++) {
       sellPrices.push(Number(sellValues[row][col] || 'NaN') || NaN)
     }
+  }
+
+  // If NO data has been entered then clear everything and exit early
+  if(!buyPrice && !sellPrices.slice(2).some(v=>v)) {
+    sellRange.setValue(null)
+    sheet.getRange(1, getDataColumn(editRow, 0), 1323, 12).setValue(null)
+    return
   }
 
   // Generate prediction off of sellPrices
